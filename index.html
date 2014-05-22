@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Sync</title>
+    <style>
+        body {
+            background-color: black;
+            font-family: "Avenir", "Helvetica Neue", "Arial", sans-serif;
+            font-size: 90%;
+            line-height: 125%;
+        }
+        a {
+            color: #fff;
+        }
+        #view {
+            position: fixed;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #side {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 250px;
+            background-color: rgba(48, 48, 48, 0.8);
+            color: #fff;
+            padding: 25px;
+            overflow: auto;
+        }
+        #side h3 {
+            margin-top: 0;
+        }
+        #side p {
+            text-align: justify;
+        }
+        .left {
+            text-align: left;
+        }
+        .right {
+            text-align: right;
+        }
+        th {
+            padding-top: 10px;
+            text-align: left;
+        }
+        #groups {
+            width: 250px;
+            height: 250px;
+        }
+    </style>
+</head>
+<body>
+    <svg id="view" viewbox="0 0 24 24" preserveAspectRatio="xMidYMid slice"></svg>
+    <div id="side">
+        <h3>Synchronizing Fireflies</h3>
+        <p>An experiment inspired by the book "<a target="_blank" href="http://www.amazon.com/Sync-Order-Emerges-Universe-Nature/dp/0786887214">Sync: How Order Emerges From Chaos In the Universe, Nature, and Daily Life</a>" by Steven H. Strogatz.</p>
+        <p>Each cell flashes every few seconds. The cells influence each other in such a way that they will all eventually synchronize, as do some species of fireflies.</p>
+        <p>Each cell "charges" following a curve similar to that of a charging capacitor. When a cell reaches a threshold, it fires. The cell firing affects neighboring cells by a factor proportional to the inverse of their squared distance. The cells need not have identical individual frequencies to reach sychronization. This can be tested by tweaking the similarity factor, which causes the cells to vary in their charging times.</p>
+        <p>Visualization by <a target="_blank" href="http://www.michaelfogleman.com/">Michael Fogleman</a>.</p>
+        <svg id="groups"></svg>
+        <!--
+        <table>
+            <tr><th colspan=3><strong>Layout</strong></th></tr>
+            <tr><td colspan=3><input type="radio" name="arrangement" id="grid"> <label for="grid">Grid</label></td></tr>
+            <tr><td colspan=3><input type="radio" name="arrangement" id="scatter"> <label for="scatter">Scattered</label></td></tr>
+            <tr><th colspan=3><strong>Influence</strong></th></tr>
+            <tr><td class="right">Weak</td><td><input type="range" name="points" min="1" max="10" style="vertical-align: middle;"></td><td>Strong</td></tr>
+            <tr><th colspan=3><strong>Similarity</strong></th></tr>
+            <tr><td class="right">Identical</td><td><input type="range" name="points" min="1" max="10" style="vertical-align: middle;"></td><td>Varied</td></tr>
+        </table>
+        -->
+    </div>
+</body>
+<script src="d3.min.js"></script>
+<script>
+    function f(x) {
+        return 1 - Math.pow(Math.E, -x);
+    }
+
+    function g(y) {
+        return y < 1 ? Math.log(1 / (1 - y)) : 50;
+    }
+
+    function gaussian(mu, sigma) {
+        var x1, x2, rad;
+        do {
+            x1 = 2 * Math.random() - 1;
+            x2 = 2 * Math.random() - 1;
+            rad = x1 * x1 + x2 * x2;
+        } while(rad >= 1 || rad == 0);
+        var c = Math.sqrt(-2 * Math.log(rad) / rad);
+        return mu + x1 * c * sigma;
+    };
+
+    var N = 24;
+    var count = N * N;
+    var period = 3;
+    var speed = 1;
+    var threshold = f(period);
+    var influence = 0.003;
+    var similarity = 0;
+    var lastUpdate = 0;
+    var values = [];
+    var weights = [];
+    var px = [];
+    var py = [];
+    var scatter = false;
+    var groups = [];
+
+    for (var i = 0; i < count; i++) {
+        var value = f(Math.random() * g(threshold));
+        var weight = similarity ? gaussian(1, 1 / similarity) : 1;
+        values.push(value);
+        weights.push(weight);
+        var x = 0.5 + i % N;
+        var y = 0.5 + Math.floor(i / N);
+        if (scatter) {
+            while (true) {
+                x = Math.random() * N;
+                y = Math.random() * N;
+                var ok = true;
+                for (var j = 0; j < i; j++) {
+                    var dx = px[j] - x;
+                    var dy = py[j] - y;
+                    var d = Math.sqrt(dx * dx + dy * dy);
+                    if (d < 0.8) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    break;
+                }
+            }
+        }
+        px.push(x);
+        py.push(y);
+    }
+
+    function update(dt) {
+        var result = [];
+        while (dt > 0) {
+            var d = dt;
+            for (var i = 0; i < count; i++) {
+                var e = (g(threshold) - g(values[i])) / weights[i];
+                if (e < d) {
+                    d = e;
+                }
+            }
+            dt -= d;
+            for (var i = 0; i < count; i++) {
+                values[i] = f(g(values[i]) + d * weights[i]);
+            }
+            var seen = {};
+            while (true) {
+                var done = 1;
+                for (var i = 0; i < count; i++) {
+                    if (values[i] < threshold || i in seen) {
+                        continue;
+                    }
+                    // i will flash
+                    seen[i] = true;
+                    var x1 = px[i];
+                    var y1 = py[i];
+                    for (var j = 0; j < count; j++) {
+                        if (values[j] >= threshold) {
+                            continue;
+                        }
+                        // i will influence j
+                        done = 0;
+                        var x2 = px[j];
+                        var y2 = py[j];
+                        var dx = x2 - x1;
+                        var dy = y2 - y1;
+                        var d2 = dx * dx + dy * dy;
+                        values[j] += influence / d2;
+                    }
+                }
+                if (done) {
+                    break;
+                }
+            }
+            for (var i = 0; i < count; i++) {
+                if (values[i] >= threshold) {
+                    values[i] = 0;
+                    result.push(i);
+                }
+            }
+        }
+        return result;
+    }
+
+    function key(x) {
+        return x;
+    }
+
+    function redraw(dt) {
+        var result = update(dt);
+        if (result.indexOf(0) >= 0) {
+            groups.sort(function(a, b) { return b - a; });
+            redrawGroups(groups);
+            groups = [];
+        }
+        if (result.length > 0) {
+            groups.push(result.length);
+        }
+        var view = d3.select("#view");
+        var rect = view.selectAll("circle").data(result, key);
+        rect.enter().append("circle")
+            .attr("cx", function(d) { return px[d]; })
+            .attr("cy", function(d) { return py[d]; })
+            .attr("r", 0.4)
+            .attr("fill", "#6fff00")
+            .transition()
+            .duration(500)
+            .styleTween("fill", function(d) {
+                return d3.interpolate('#6fff00', '#000000');
+            })
+            .remove()
+            ;
+    }
+
+    function redrawGroups(groups) {
+        var children = [];
+        for (var i = 0; i < groups.length; i++) {
+            children.push({
+                value: groups[i]
+            });
+        }
+        var data = {
+            children: children
+        }
+        var bubble = d3.layout.pack()
+            .sort(null)
+            .size([250, 250])
+            .padding(1.5);
+        var svg = d3.select("#groups");
+        var node = svg.selectAll("circle")
+            .data(bubble.nodes(data).filter(function(d) { return !d.children; }));
+        node.enter().append("circle")
+            .style("fill", "#6fff00");
+        node.exit().remove();
+        node
+            .transition()
+            .attr("cx", function(d) { return d.x; })
+            .attr("cy", function(d) { return d.y; })
+            .attr("r", function(d) { return d.r; })
+            ;
+    }
+
+    function timer() {
+        var now = (new Date()).getTime();
+        var elapsed = now - lastUpdate;
+        lastUpdate = now;
+        if (elapsed < 500) {
+            redraw(speed * elapsed / 1000.0);
+        }
+        setTimeout(timer, 10);
+    }
+
+    timer();
+</script>
+</html>
