@@ -7,3 +7,5 @@ An experiment inspired by the book "Sync: How Order Emerges From Chaos In the Un
 Each cell flashes every few seconds. The cells influence each other in such a way that they will all eventually synchronize, as do some species of fireflies.
 
 The cells charge following a logaritmic curve similar to that of a charging capacitor, firing upon reaching a threshold. This affects neighboring cells by a factor proportional to the inverse of their squared distance. The cells need not have identical individual frequencies to reach sychronization.
+
+This is a JavaScript port of code that I originally wrote in Python and C. The old code can be found here: https://github.com/fogleman/Sync
