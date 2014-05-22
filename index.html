@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Sync</title>
+    <title>Synchronizing Fireflies</title>
     <style>
         body {
             background-color: black;
@@ -28,7 +28,7 @@
             top: 0;
             bottom: 0;
             width: 250px;
-            background-color: rgba(48, 48, 48, 0.8);
+            background-color: rgba(16, 32, 64, 0.8);
             color: #fff;
             padding: 25px;
             overflow: auto;
@@ -46,7 +46,6 @@
             text-align: right;
         }
         th {
-            padding-top: 10px;
             text-align: left;
         }
         #groups {
@@ -56,25 +55,40 @@
     </style>
 </head>
 <body>
-    <svg id="view" viewbox="0 0 24 24" preserveAspectRatio="xMidYMid slice"></svg>
+    <svg id="view" preserveAspectRatio="xMidYMid slice"></svg>
     <div id="side">
         <h3>Synchronizing Fireflies</h3>
         <p>An experiment inspired by the book "<a target="_blank" href="http://www.amazon.com/Sync-Order-Emerges-Universe-Nature/dp/0786887214">Sync: How Order Emerges From Chaos In the Universe, Nature, and Daily Life</a>" by Steven H. Strogatz.</p>
         <p>Each cell flashes every few seconds. The cells influence each other in such a way that they will all eventually synchronize, as do some species of fireflies.</p>
-        <p>Each cell "charges" following a curve similar to that of a charging capacitor. When a cell reaches a threshold, it fires. The cell firing affects neighboring cells by a factor proportional to the inverse of their squared distance. The cells need not have identical individual frequencies to reach sychronization. This can be tested by tweaking the similarity factor, which causes the cells to vary in their charging times.</p>
+        <p>The cells charge following a logaritmic curve similar to that of a charging capacitor, firing upon reaching a threshold. This affects neighboring cells by a factor proportional to the inverse of their squared distance. The cells need not have identical individual frequencies to reach sychronization. This can be tested by tweaking the similarity factor, which causes the cells to vary in their charging times.</p>
         <p>Visualization by <a target="_blank" href="http://www.michaelfogleman.com/">Michael Fogleman</a>.</p>
-        <svg id="groups"></svg>
-        <!--
-        <table>
-            <tr><th colspan=3><strong>Layout</strong></th></tr>
-            <tr><td colspan=3><input type="radio" name="arrangement" id="grid"> <label for="grid">Grid</label></td></tr>
-            <tr><td colspan=3><input type="radio" name="arrangement" id="scatter"> <label for="scatter">Scattered</label></td></tr>
-            <tr><th colspan=3><strong>Influence</strong></th></tr>
-            <tr><td class="right">Weak</td><td><input type="range" name="points" min="1" max="10" style="vertical-align: middle;"></td><td>Strong</td></tr>
-            <tr><th colspan=3><strong>Similarity</strong></th></tr>
-            <tr><td class="right">Identical</td><td><input type="range" name="points" min="1" max="10" style="vertical-align: middle;"></td><td>Varied</td></tr>
+        <table width="100%">
+            <tr>
+                <th width="50%">Size</th>
+                <th width="50%">Layout</th>
+            </tr>
+            <tr>
+                <td>
+                    <input type="radio" name="size" id="size64" onclick="setSize(8);"> <label for="size64">64 (8x8)</label><br>
+                    <input type="radio" name="size" id="size256" onclick="setSize(16);"> <label for="size256">256 (16x16)</label><br>
+                    <input type="radio" name="size" id="size576" onclick="setSize(24);" checked> <label for="size576">576 (24x24)</label><br>
+                    <input type="radio" name="size" id="size1024" onclick="setSize(32);"> <label for="size1024">1024 (32x32)</label>
+                </td>
+                <td valign="top">
+                    <input type="radio" name="scatter" id="grid" onclick="setScatter(false);" checked> <label for="grid">Grid</label><br>
+                    <input type="radio" name="scatter" id="scatter" onclick="setScatter(true);"> <label for="scatter">Scattered</label><br>
+                    <br>
+                    <button onclick="reset();">Start Over</button>
+                </td>
+            </tr>
         </table>
-        -->
+        <table width="100%">
+            <tr><th colspan=3>Influence</th></tr>
+            <tr><td class="right">Weak</td><td><input type="range" name="points" value="3" min="1" max="16" style="vertical-align: middle;" onchange="setInfluence(this.value);"></td><td>Strong</td></tr>
+            <tr><th colspan=3>Similarity</th></tr>
+            <tr><td class="right">Identical</td><td><input type="range" name="points" value="0" min="0" max="8" style="vertical-align: middle;" onchange="setSimilarity(this.value);"></td><td>Varied</td></tr>
+        </table>
+        <svg id="groups"></svg>
     </div>
 </body>
 <script src="d3.min.js"></script>
@@ -105,42 +119,75 @@
     var threshold = f(period);
     var influence = 0.003;
     var similarity = 0;
+    var scatter = false;
     var lastUpdate = 0;
     var values = [];
     var weights = [];
+    var groups = [];
     var px = [];
     var py = [];
-    var scatter = false;
-    var groups = [];
 
-    for (var i = 0; i < count; i++) {
-        var value = f(Math.random() * g(threshold));
-        var weight = similarity ? gaussian(1, 1 / similarity) : 1;
-        values.push(value);
-        weights.push(weight);
-        var x = 0.5 + i % N;
-        var y = 0.5 + Math.floor(i / N);
-        if (scatter) {
-            while (true) {
-                x = Math.random() * N;
-                y = Math.random() * N;
-                var ok = true;
-                for (var j = 0; j < i; j++) {
-                    var dx = px[j] - x;
-                    var dy = py[j] - y;
-                    var d = Math.sqrt(dx * dx + dy * dy);
-                    if (d < 0.8) {
-                        ok = false;
+    function setSize(x) {
+        N = x;
+        count = N * N;
+        reset();
+    }
+
+    function setScatter(x) {
+        scatter = x;
+        reset();
+    }
+
+    function setInfluence(x) {
+        influence = x / 1000;
+        reset();
+    }
+
+    function setSimilarity(x) {
+        if (x !== 0) {
+            x = Math.pow(2, 10 - x);
+        }
+        similarity = x;
+        reset();
+    }
+
+    function reset() {
+        values = [];
+        weights = [];
+        groups = [];
+        px = [];
+        py = [];
+        d3.select("#view").selectAll("circle").remove();
+        d3.select("#view").attr("viewBox", "0 0 " + N + " " + N);
+        for (var i = 0; i < count; i++) {
+            var value = f(Math.random() * g(threshold));
+            var weight = similarity ? gaussian(1, 1 / similarity) : 1;
+            values.push(value);
+            weights.push(weight);
+            var x = 0.5 + i % N;
+            var y = 0.5 + Math.floor(i / N);
+            if (scatter) {
+                while (true) {
+                    x = Math.random() * N;
+                    y = Math.random() * N;
+                    var ok = true;
+                    for (var j = 0; j < i; j++) {
+                        var dx = px[j] - x;
+                        var dy = py[j] - y;
+                        var d = Math.sqrt(dx * dx + dy * dy);
+                        if (d < 0.8) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (ok) {
                         break;
                     }
                 }
-                if (ok) {
-                    break;
-                }
             }
+            px.push(x);
+            py.push(y);
         }
-        px.push(x);
-        py.push(y);
     }
 
     function update(dt) {
@@ -164,7 +211,6 @@
                     if (values[i] < threshold || i in seen) {
                         continue;
                     }
-                    // i will flash
                     seen[i] = true;
                     var x1 = px[i];
                     var y1 = py[i];
@@ -172,7 +218,6 @@
                         if (values[j] >= threshold) {
                             continue;
                         }
-                        // i will influence j
                         done = 0;
                         var x2 = px[j];
                         var y2 = py[j];
@@ -239,10 +284,12 @@
         var bubble = d3.layout.pack()
             .sort(null)
             .size([250, 250])
-            .padding(1.5);
+            .padding(2);
         var svg = d3.select("#groups");
         var node = svg.selectAll("circle")
-            .data(bubble.nodes(data).filter(function(d) { return !d.children; }));
+            .data(bubble.nodes(data).filter(function(d) {
+                return !d.children;
+            }));
         node.enter().append("circle")
             .style("fill", "#6fff00");
         node.exit().remove();
@@ -264,6 +311,7 @@
         setTimeout(timer, 10);
     }
 
+    reset();
     timer();
 </script>
 </html>
